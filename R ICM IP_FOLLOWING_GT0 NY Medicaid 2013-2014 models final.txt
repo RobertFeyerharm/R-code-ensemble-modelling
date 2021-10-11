@@ -1,0 +1,1022 @@
+###########################################################################
+### 	Predictive Modeling for New York Medicaid 2013-2014 data. 	###
+###########################################################################
+# Load libraries
+library(mlbench)
+library(caret)
+library(caretEnsemble)
+
+> install.packages("caret", dependencies=TRUE)
+  install.packages("caretEnsemble", dependencies=TRUE)
+  install.packages("mlbench", dependencies=TRUE)
+  install.packages("glmnet", dependencies=TRUE)
+  install.packages("Matrix", dependencies=TRUE)
+  install.packages("plyr", dependencies=TRUE)
+  install.packages("randomForest", dependencies=TRUE)
+  install.packages("gbm", dependencies=TRUE)
+  install.packages("neuralnet", dependencies=TRUE)
+  install.packages("usdm", dependencies=TRUE)
+  install.packages("parallel", dependencies=TRUE)
+  install.packages("forecast", dependencies=TRUE)
+  install.packages("quadprog", dependencies=TRUE)
+  install.packages("SDMTools", dependencies=TRUE)
+  install.packages("ROCR", dependencies=TRUE)
+  #install.packages("DMwR", dependencies=TRUE)
+  install.packages("DMwR", dependencies=TRUE, repos='http://cran.rstudio.com/')
+
+  library(glmnet)
+  library(mlbench)
+  library(caret)
+  library(caretEnsemble)
+  library(Matrix)
+  library(plyr)
+  library(randomForest)
+  library(gbm)
+  library(neuralnet)
+  library(parallel)
+  library(forecast)
+  library(quadprog)
+  library(SDMTools)
+  library(ROCR)
+  library(DMwR)
+
+
+
+###################################################################################
+### 	Load New York Medicaid 2013-2014 data and create CV partitions. 	###
+###################################################################################
+
+> ny_data <- read.table("H:/ICM Risk Weighting (2)/Trigger algorithms vs. regression models/ICM_RISK_NYC_ADD_FINAL_STND.txt", sep=",", header=T);
+  colnames(ny_data)
+ [1] "MEMBNO"                  "GENDER"                  "MEMAGE"                  "IP_ADMITS"               "GT_27_DAYS_IP"           "ALWAMT"                 
+ [7] "IP_ADMITS_FOLLOWING"     "ALWAMT_FOLLOWING"        "GT_4_WEEKS_OP"           "GT_1_DETOX_FU"           "ICM_ENG_REF"             "trigger"                
+[13] "risk_weight_score"       "log_ALWAMT"              "log_ALWAMT_FOLLOWING"    "parent_ehmr"             "parent_ghm"              "log_OP_VISITS"          
+[19] "IP_ADMITS_one"           "IP_ADMITS_two"           "IP_ADMITS_three_plus"    "IOP_PHP_VISITS_gt0"      "DISTINCT_DX_one"         "DISTINCT_DX_two"        
+[25] "DISTINCT_DX_three_plus"  "log_ADJUSTMENT"          "log_ANXIETY"             "log_BIPOLAR"             "log_DELIRIUM"            "log_MAJDEPRESS"         
+[31] "log_MENTAL_MED"          "log_MOOD"                "log_SCHIZOAFF"           "log_SCHIZO"              "log_SUBSTANCE"           "n"                      
+[37] "IP_ADMITS_FOLLOWING_GT0" "randnum"                 "fold"                    "MEMAGE_sq"               "log_OP_VISITS_sq"        "log_ADJUSTMENT_sq"      
+[43] "log_ANXIETY_sq"          "log_BIPOLAR_sq"          "log_DELIRIUM_sq"         "log_MAJDEPRESS_sq"       "log_MENTAL_MED_sq"       "log_MOOD_sq"            
+[49] "log_SCHIZO_sq"           "log_SCHIZOAFF_sq"        "log_SUBSTANCE_sq"   
+
+> head(ny_data)
+       MEMBNO GENDER     MEMAGE IP_ADMITS GT_27_DAYS_IP ALWAMT IP_ADMITS_FOLLOWING ALWAMT_FOLLOWING GT_4_WEEKS_OP GT_1_DETOX_FU ICM_ENG_REF trigger risk_weight_score
+1 08942644001      0  0.7425537         0             0   1089                   0           1012.7             0             0           0       0                 1
+2 JQS36138R01      1 -1.7703724         0             0    261                   0           2445.0             0             0           0       0                 0
+3 24872878701      0  0.7830848         0             0    165                   0              0.0             0             0           0       0                 0
+4 36034330501      1  0.7830848         1             0   2545                   1          12121.0             0             0           1       1                 0
+5 13170492201      1  0.7425537         0             0    375                   0              0.0             0             0           0       0                 1
+6 05318804401      0  1.5937061         0             0    244                   0            200.0             0             0           0       0                 0
+  log_ALWAMT log_ALWAMT_FOLLOWING parent_ehmr parent_ghm log_OP_VISITS IP_ADMITS_one IP_ADMITS_two IP_ADMITS_three_plus IOP_PHP_VISITS_gt0 DISTINCT_DX_one DISTINCT_DX_two
+1  0.2880809             6.921362           1          0     0.2403478             0             0                    0                  0               1               0
+2 -0.7684979             7.802209           0          0    -0.1880031             0             0                    0                  0               1               0
+3 -1.1067279             0.000000           1          0    -1.1092405             0             0                    0                  0               0               0
+4  0.9168347             9.402777           1          0    -0.7692392             1             0                    0                  0               1               0
+5 -0.5007604             0.000000           0          1    -0.1880031             0             0                    0                  0               0               0
+6 -0.8182190             5.303305           1          0    -1.1092405             0             0                    0                  0               1               0
+  DISTINCT_DX_three_plus log_ADJUSTMENT log_ANXIETY log_BIPOLAR log_DELIRIUM log_MAJDEPRESS log_MENTAL_MED   log_MOOD log_SCHIZOAFF log_SCHIZO log_SUBSTANCE    n
+1                      0     -0.3766950  -0.4604003  -0.3587361   -0.2220354     -0.5266476     -0.1401839 -0.8652084    -0.1780052  3.2766502     -0.143490 2953
+2                      0      0.6493148  -0.4604003  -0.3587361   -0.2220354     -0.5266476     -0.1401839 -0.8652084    -0.1780052 -0.2744553     -0.143490 9675
+3                      0     -0.3766950   0.7395586  -0.3587361   -0.2220354     -0.5266476     -0.1401839 -0.8652084    -0.1780052 -0.2744553     -0.143490 6422
+4                      0     -0.3766950  -0.4604003  -0.3587361   -0.2220354      0.5943886     -0.1401839  0.2513299    -0.1780052 -0.2744553     -0.143490 6581
+5                      0     -0.3766950  -0.4604003  -0.3587361   -0.2220354     -0.5266476     -0.1401839 -0.8652084    -0.1780052 -0.2744553      4.132655 5913
+6                      0     -0.3766950  -0.4604003  -0.3587361   -0.2220354     -0.5266476     -0.1401839 -0.3069393    -0.1780052 -0.2744553     -0.143490  620
+  IP_ADMITS_FOLLOWING_GT0      randnum fold MEMAGE_sq log_OP_VISITS_sq log_ADJUSTMENT_sq log_ANXIETY_sq log_BIPOLAR_sq log_DELIRIUM_sq log_MAJDEPRESS_sq log_MENTAL_MED_sq
+1                       0 0.0000116038    1 0.5513860       0.05776709         0.1418991      0.2119684      0.1286916      0.04929972         0.2773577        0.01965154
+2                       0 0.0000795270    1 3.1342185       0.03534518         0.4216097      0.2119684      0.1286916      0.04929972         0.2773577        0.01965154
+3                       0 0.0001180652    1 0.6132218       1.23041446         0.1418991      0.5469469      0.1286916      0.04929972         0.2773577        0.01965154
+4                       1 0.0003733737    1 0.6132218       0.59172893         0.1418991      0.2119684      0.1286916      0.04929972         0.3532978        0.01965154
+5                       0 0.0004349486    1 0.5513860       0.03534518         0.1418991      0.2119684      0.1286916      0.04929972         0.2773577        0.01965154
+6                       0 0.0006470028    1 2.5398992       1.23041446         0.1418991      0.2119684      0.1286916      0.04929972         0.2773577        0.01965154
+  log_MOOD_sq log_SCHIZO_sq log_SCHIZOAFF_sq log_SUBSTANCE_sq
+1  0.74858561   10.73643666       0.03168586       0.02058937
+2  0.74858561    0.07532569       0.03168586       0.02058937
+3  0.74858561    0.07532569       0.03168586       0.02058937
+4  0.06316671    0.07532569       0.03168586       0.02058937
+5  0.74858561    0.07532569       0.03168586      17.07883570
+6  0.09421171    0.07532569       0.03168586       0.02058937
+
+
+
+> summary(ny_data)
+         MEMBNO          GENDER           MEMAGE           IP_ADMITS       GT_27_DAYS_IP         ALWAMT         IP_ADMITS_FOLLOWING ALWAMT_FOLLOWING GT_4_WEEKS_OP    
+ 00111798901:    1   Min.   :0.0000   Min.   :-2.05409   Min.   :0.00000   Min.   :0.00000   Min.   :    17.0   Min.   : 0.00000    Min.   :     0   Min.   :0.00000  
+ 00115266901:    1   1st Qu.:0.0000   1st Qu.:-0.83816   1st Qu.:0.00000   1st Qu.:0.00000   1st Qu.:   265.0   1st Qu.: 0.00000    1st Qu.:     0   1st Qu.:0.00000  
+ 00115296101:    1   Median :0.0000   Median : 0.09406   Median :0.00000   Median :0.00000   Median :   685.7   Median : 0.00000    Median :   385   Median :0.00000  
+ 00115467401:    1   Mean   :0.3831   Mean   : 0.00000   Mean   :0.09192   Mean   :0.00762   Mean   :  2068.0   Mean   : 0.06057    Mean   :  1667   Mean   :0.07485  
+ 00333110601:    1   3rd Qu.:1.0000   3rd Qu.: 0.82362   3rd Qu.:0.00000   3rd Qu.:0.00000   3rd Qu.:  1855.6   3rd Qu.: 0.00000    3rd Qu.:  1456   3rd Qu.:0.00000  
+ 00334912601:    1   Max.   :1.0000   Max.   : 2.16114   Max.   :7.00000   Max.   :1.00000   Max.   :190919.0   Max.   :10.00000    Max.   :161608   Max.   :1.00000  
+ (Other)    :12592                                                                                                                                                    
+ GT_1_DETOX_FU       ICM_ENG_REF         trigger       risk_weight_score   log_ALWAMT       log_ALWAMT_FOLLOWING  parent_ehmr       parent_ghm     log_OP_VISITS     
+ Min.   :0.000000   Min.   :0.00000   Min.   :0.0000   Min.   : 0.0000   Min.   :-2.75328   Min.   : 0.000       Min.   :0.0000   Min.   :0.0000   Min.   :-1.69048  
+ 1st Qu.:0.000000   1st Qu.:0.00000   1st Qu.:0.0000   1st Qu.: 0.0000   1st Qu.:-0.75727   1st Qu.: 0.000       1st Qu.:0.0000   1st Qu.:0.0000   1st Qu.:-0.76924  
+ Median :0.000000   Median :0.00000   Median :0.0000   Median : 0.0000   Median :-0.05438   Median : 5.956       Median :0.0000   Median :0.0000   Median : 0.05323  
+ Mean   :0.002937   Mean   :0.04747   Mean   :0.1977   Mean   : 0.4262   Mean   : 0.00000   Mean   : 4.570       Mean   :0.4117   Mean   :0.1134   Mean   : 0.00000  
+ 3rd Qu.:0.000000   3rd Qu.:0.00000   3rd Qu.:0.0000   3rd Qu.: 0.0000   3rd Qu.: 0.68280   3rd Qu.: 7.284       3rd Qu.:1.0000   3rd Qu.:0.0000   3rd Qu.: 0.77857  
+ Max.   :1.000000   Max.   :1.00000   Max.   :1.0000   Max.   :30.4333   Max.   : 4.11664   Max.   :11.993       Max.   :1.0000   Max.   :1.0000   Max.   : 4.02659  
+                                                                                                                                                                     
+ IP_ADMITS_one     IP_ADMITS_two  IP_ADMITS_three_plus IOP_PHP_VISITS_gt0 DISTINCT_DX_one  DISTINCT_DX_two  DISTINCT_DX_three_plus log_ADJUSTMENT     log_ANXIETY     
+ Min.   :0.00000   Min.   :0.00   Min.   :0.000000     Min.   :0.000000   Min.   :0.0000   Min.   :0.0000   Min.   :0.00000        Min.   :-0.3767   Min.   :-0.4604  
+ 1st Qu.:0.00000   1st Qu.:0.00   1st Qu.:0.000000     1st Qu.:0.000000   1st Qu.:0.0000   1st Qu.:0.0000   1st Qu.:0.00000        1st Qu.:-0.3767   1st Qu.:-0.4604  
+ Median :0.00000   Median :0.00   Median :0.000000     Median :0.000000   Median :1.0000   Median :0.0000   Median :0.00000        Median :-0.3767   Median :-0.4604  
+ Mean   :0.05088   Mean   :0.01   Mean   :0.005953     Mean   :0.005477   Mean   :0.6359   Mean   :0.1596   Mean   :0.03358        Mean   : 0.0000   Mean   : 0.0000  
+ 3rd Qu.:0.00000   3rd Qu.:0.00   3rd Qu.:0.000000     3rd Qu.:0.000000   3rd Qu.:1.0000   3rd Qu.:0.0000   3rd Qu.:0.00000        3rd Qu.:-0.3767   3rd Qu.:-0.4604  
+ Max.   :1.00000   Max.   :1.00   Max.   :1.000000     Max.   :1.000000   Max.   :1.0000   Max.   :1.0000   Max.   :1.00000        Max.   : 6.4837   Max.   : 4.7127  
+                                                                                                                                                                      
+  log_BIPOLAR       log_DELIRIUM    log_MAJDEPRESS    log_MENTAL_MED       log_MOOD       log_SCHIZOAFF      log_SCHIZO      log_SUBSTANCE           n        
+ Min.   :-0.3587   Min.   :-0.222   Min.   :-0.5266   Min.   :-0.1402   Min.   :-0.8652   Min.   :-0.178   Min.   :-0.2745   Min.   :-0.1435   Min.   :    1  
+ 1st Qu.:-0.3587   1st Qu.:-0.222   1st Qu.:-0.5266   1st Qu.:-0.1402   1st Qu.:-0.8652   1st Qu.:-0.178   1st Qu.:-0.2745   1st Qu.:-0.1435   1st Qu.: 3150  
+ Median :-0.3587   Median :-0.222   Median :-0.5266   Median :-0.1402   Median :-0.3069   Median :-0.178   Median :-0.2745   Median :-0.1435   Median : 6300  
+ Mean   : 0.0000   Mean   : 0.000   Mean   : 0.0000   Mean   : 0.0000   Mean   : 0.0000   Mean   : 0.000   Mean   : 0.0000   Mean   : 0.0000   Mean   : 6300  
+ 3rd Qu.:-0.3587   3rd Qu.:-0.222   3rd Qu.: 0.1806   3rd Qu.:-0.1402   3rd Qu.: 0.8096   3rd Qu.:-0.178   3rd Qu.:-0.2745   3rd Qu.:-0.1435   3rd Qu.: 9449  
+ Max.   : 5.6140   Max.   :13.224   Max.   : 4.9198   Max.   :17.4850   Max.   : 3.4337   Max.   :10.611   Max.   : 7.0162   Max.   :16.9127   Max.   :12598  
+                                                                                                                                                              
+ IP_ADMITS_FOLLOWING_GT0    randnum               fold        MEMAGE_sq        log_OP_VISITS_sq    log_ADJUSTMENT_sq log_ANXIETY_sq     log_BIPOLAR_sq    log_DELIRIUM_sq   
+ Min.   :0.00000         Min.   :0.0000116   Min.   : 1.0   Min.   :0.000169   Min.   : 0.002834   Min.   : 0.1419   Min.   : 0.08803   Min.   : 0.1287   Min.   :  0.0493  
+ 1st Qu.:0.00000         1st Qu.:0.2580118   1st Qu.: 3.0   1st Qu.:0.174979   1st Qu.: 0.116205   1st Qu.: 0.1419   1st Qu.: 0.21197   1st Qu.: 0.1287   1st Qu.:  0.0493  
+ Median :0.00000         Median :0.5026314   Median : 5.5   Median :0.678343   Median : 0.591729   Median : 0.1419   Median : 0.21197   Median : 0.1287   Median :  0.0493  
+ Mean   :0.03834         Mean   :0.5017510   Mean   : 5.5   Mean   :0.999921   Mean   : 0.999921   Mean   : 0.9999   Mean   : 0.99992   Mean   : 0.9999   Mean   :  0.9999  
+ 3rd Qu.:0.00000         3rd Qu.:0.7459617   3rd Qu.: 8.0   3rd Qu.:1.716070   3rd Qu.: 1.413914   3rd Qu.: 0.1419   3rd Qu.: 0.21197   3rd Qu.: 0.1287   3rd Qu.:  0.0493  
+ Max.   :1.00000         Max.   :0.9999269   Max.   :10.0   Max.   :4.670531   Max.   :16.213432   Max.   :42.0386   Max.   :22.20964   Max.   :31.5171   Max.   :174.8627  
+                                                                                                                                                                            
+ log_MAJDEPRESS_sq  log_MENTAL_MED_sq    log_MOOD_sq        log_SCHIZO_sq      log_SCHIZOAFF_sq    log_SUBSTANCE_sq   
+ Min.   : 0.03263   Min.   :  0.01965   Min.   : 0.000385   Min.   : 0.07533   Min.   :  0.03169   Min.   :  0.02059  
+ 1st Qu.: 0.27736   1st Qu.:  0.01965   1st Qu.: 0.492876   1st Qu.: 0.07533   1st Qu.:  0.03169   1st Qu.:  0.02059  
+ Median : 0.27736   Median :  0.01965   Median : 0.748586   Median : 0.07533   Median :  0.03169   Median :  0.02059  
+ Mean   : 0.99992   Mean   :  0.99992   Mean   : 0.999921   Mean   : 0.99992   Mean   :  0.99992   Mean   :  0.99992  
+ 3rd Qu.: 0.27736   3rd Qu.:  0.01965   3rd Qu.: 0.748586   3rd Qu.: 0.07533   3rd Qu.:  0.03169   3rd Qu.:  0.02059  
+ Max.   :24.20478   Max.   :305.72678   Max.   :11.790361   Max.   :49.22766   Max.   :112.60092   Max.   :286.04067  
+
+
+
+
+
+> nrow(ny_data)
+[1] 12598
+
+
+> table(ny_data$trigger)
+    0     1 
+10107  2491 
+
+
+> table(ny_data$IP_ADMITS_FOLLOWING)
+    0     1     2     3     4     5     6     7     9    10 
+12115   313   117    22    20     4     4     1     1     1 
+
+
+> table(ny_data$IP_ADMITS_FOLLOWING_GT0)
+    0     1 
+12115   483 
+
+
+> table(ny_data$trigger, ny_data$IP_ADMITS_FOLLOWING_GT0)
+   
+       0    1
+  0 9867  240
+  1 2248  243
+
+> length(unique(ny_data$MEMBNO))
+[1] 12598
+
+
+ny_data2 <- ny_data
+ny_data2$IP_ADMITS_FOLLOWING_GT0 <- abs(ny_data2$IP_ADMITS_FOLLOWING_GT0 - 1)
+ny_data2$trigger <- abs(ny_data2$trigger - 1)
+confusionMatrix(ny_data2$trigger, ny_data2$IP_ADMITS_FOLLOWING_GT0)
+
+Confusion Matrix and Statistics
+
+          Reference
+Prediction    1    0
+         1  243 2248
+         0  240 9867
+                                          
+               Accuracy : 0.8025          
+                 95% CI : (0.7954, 0.8094)
+    No Information Rate : 0.9617          
+    P-Value [Acc > NIR] : 1               
+                                          
+                  Kappa : 0.106           
+ Mcnemar's Test P-Value : <2e-16          
+                                          
+            Sensitivity : 0.50311         
+            Specificity : 0.81444         
+         Pos Pred Value : 0.09755         
+         Neg Pred Value : 0.97625         
+             Prevalence : 0.03834         
+         Detection Rate : 0.01929         
+   Detection Prevalence : 0.19773         
+      Balanced Accuracy : 0.65878         
+                                          
+       'Positive' Class : 0    
+
+
+
+
+
+### Round up response value in order to use mpath package (should not reduce fit of model too much). ###
+#ny_data$ALWAMT_FOLLOWING_CEIL <- ceiling(ny_data$ALWAMT_FOLLOWING)
+
+ny_data <- read.table("H:/ICM Risk Weighting (2)/Trigger algorithms vs. regression models/ICM_RISK_NYC_ADD_FINAL_STND.txt", sep=",", header=T);
+
+### Drop unnecessary fields. ###
+ny_data$fold <- ny_data$n <- ny_data$randnum <- NULL
+
+
+### Create binomial ip_admit character outcome to use in caret. ###
+ny_data$ip_admit_following[ny_data$IP_ADMITS_FOLLOWING_GT0==0] <- "no"
+ny_data$ip_admit_following[ny_data$IP_ADMITS_FOLLOWING_GT0==1] <- "yes" 
+
+
+### R code for creating 1st stage CV folds stratified on outcome variable and 5 training & test data frames. ###
+set.seed(234)
+folds <- createFolds(ny_data$ip_admit_following, k=5,list = TRUE)
+str(folds)
+
+
+set.seed(234)
+folds2 <- createFolds(ny_data$ip_admit_following, k=5,list = FALSE)
+str(folds2)
+ny_data <- cbind(ny_data, folds2)
+
+#ny_data$n <- 1:nrow(ny_data)
+
+for(i in 1:5) 
+{ 
+  assign(paste0("train",i), ny_data[-eval(parse(text = paste0("folds$Fold",i))),])
+  assign(paste0("test",i), ny_data[eval(parse(text = paste0("folds$Fold",i))),])
+}  
+
+### Gather train & test datasets into list and initialize output_list. ###
+train <- mget(paste0("train", 1:5), envir = .GlobalEnv)
+test <- mget(paste0("test", 1:5), envir = .GlobalEnv)
+
+
+
+
+
+for (i in 1:5) 
+{
+        trainx_matrix <- as.matrix(train2[[i]][c(11:16)])		
+	testx_matrix <- as.matrix(test2[[i]][c(11:16)])		
+	Rinv <- solve(chol(t(trainx_matrix) %*% trainx_matrix))
+	A <- cbind(rep(1,6), diag(6))
+	b <- c(1,rep(0,6))
+	y <- cbind(train2[[i]]$testy)
+	d <- t(y) %*% trainx_matrix  
+
+       	trainx <- as.data.frame(train2[[i]])
+       	testx <- as.data.frame(test2[[i]])
+       	testy <- test2[[i]]$testy
+       	fold <- test2[[i]]$folds4
+       	id <- test2[[i]]$id
+
+       	quadprog_fit <- solve.QP(Dmat = Rinv, factorized = TRUE, dvec = d, Amat = A, bvec = b, meq = 1)
+	quadprog_fit_soln <- round(quadprog_fit$solution, 4)
+       	quadprog_fit_predict[[i]] <- as.data.frame(t(quadprog_fit_soln %*% t(testx_matrix)))
+	names(quadprog_fit_predict[[i]]) <- c("quadprog_fit_predict")
+
+	quadprog_fit_predict[[i]] <- cbind.data.frame(id, testy, fold, quadprog_fit_predict[[i]])
+}
+
+
+
+
+### Create test dataset for SMOTE function. ###
+	train1_test <- train1
+	test1_test <- test1
+
+	# Create recategorized variables and factorize in order to use SMOTE function. #
+	train1_test$parent_catg[train1_test$parent_ehmr==1] <- 1
+	train1_test$parent_catg[train1_test$parent_ghm==1] <- 2
+	train1_test$parent_catg[train1_test$parent_ehmr==0 & train1_test$parent_ghm==0] <- 3
+	train1_test$ip_admits_catg[train1_test$IP_ADMITS_one==1] <- 1
+	train1_test$ip_admits_catg[train1_test$IP_ADMITS_two==1] <- 2
+	train1_test$ip_admits_catg[train1_test$IP_ADMITS_three_plus==1] <- 3
+	train1_test$ip_admits_catg[train1_test$IP_ADMITS_one==0 & train1_test$IP_ADMITS_two==0 & train1_test$IP_ADMITS_three_plus==0] <- 0
+	train1_test$distinct_dx_catg[train1_test$DISTINCT_DX_one==1] <- 1
+	train1_test$distinct_dx_catg[train1_test$DISTINCT_DX_two==1] <- 2
+	train1_test$distinct_dx_catg[train1_test$DISTINCT_DX_three_plus==1] <- 3
+	train1_test$distinct_dx_catg[train1_test$DISTINCT_DX_one==0 & train1_test$DISTINCT_DX_two==0 & train1_test$DISTINCT_DX_three_plus==0] <- 0
+	names <- c(2,5,9:11,22,36,51:53)
+	train1_test[,names] <- lapply(train1_test[,names], factor)
+	train1_test_smote <- train1_test[c(1,2,3,5,6,9:11,18,22,26:36,51:53)]
+
+
+	train1_test_smote <- SMOTE(IP_ADMITS_FOLLOWING_GT0 ~ . - MEMBNO, train1_test_smote, perc.over = 200, perc.under=200)
+	table(train1_test_smote$IP_ADMITS_FOLLOWING_GT0)
+
+	   0    1 
+	1544 1158 
+	table(train1_test$IP_ADMITS_FOLLOWING_GT0)
+
+	   0    1 
+	9692  386 
+
+
+	# Recreate binary categorical variables back into SMOTE'd training data in order to run caret Naive Bayes classifier (NOTE: cannot merge original binary 
+	categorical variables by MEMBNO since SMOTE algorithm creates new records w/ no corresponding MEMBNO in original dataset). #
+	train1_test_smote$parent_ehmr <- 0; train1_test_smote$parent_ghm <- 0; 
+	train1_test_smote$IP_ADMITS_one <- 0; train1_test_smote$IP_ADMITS_two <- 0; train1_test_smote$IP_ADMITS_three_plus <- 0;
+	train1_test_smote$DISTINCT_DX_one <- 0; train1_test_smote$DISTINCT_DX_two <- 0; train1_test_smote$DISTINCT_DX_three_plus <- 0;
+	train1_test_smote$parent_ehmr[train1_test_smote$parent_catg==1] <- 1
+	train1_test_smote$parent_ghm[train1_test_smote$parent_catg==2] <- 1
+	train1_test_smote$IP_ADMITS_one[train1_test_smote$ip_admits_catg==1] <- 1
+	train1_test_smote$IP_ADMITS_two[train1_test_smote$ip_admits_catg==2] <- 1
+	train1_test_smote$IP_ADMITS_three_plus[train1_test_smote$ip_admits_catg==3] <- 1
+	train1_test_smote$DISTINCT_DX_one[train1_test_smote$distinct_dx_catg==1] <- 1
+	train1_test_smote$DISTINCT_DX_two[train1_test_smote$distinct_dx_catg==2] <- 1
+	train1_test_smote$DISTINCT_DX_three_plus[train1_test_smote$distinct_dx_catg==3] <- 1
+	train1_test_smote$distinct_dx_catg <- train1_test_smote$ip_admits_catg <- train1_test_smote$parent_catg <- NULL
+
+
+	names <- c(1:ncol(train1_test_smote))
+	train1_test_smote[,names] <- lapply(train1_test_smote[,names], numeric)
+
+
+	# Create binomial ip_admit character outcome to use in caret. #
+	train1_test_smote$ip_admit_following[train1_test_smote$IP_ADMITS_FOLLOWING_GT0==0] <- "no"
+	train1_test_smote$ip_admit_following[train1_test_smote$IP_ADMITS_FOLLOWING_GT0==1] <- "yes" 
+
+	# Naive Bayes classifier on SMOTE'd data. #
+	nb_smote_fit <- 
+		train(as.factor(ip_admit_following) ~ . - IP_ADMITS_FOLLOWING_GT0 - MEMBNO,
+		data=train1_test_smote,
+               	trControl=trainControl(summaryFunction=twoClassSummary, classProbs = TRUE, savePredictions = TRUE), 
+               	method="nb", 
+               	metric="ROC", 
+               	preProcess=c("center","scale"))
+	       	#allowParallel=TRUE)
+
+	# Convert select variables back to factors in order to score test dataset. #
+	names <- c(2,5,9:11,22,36)
+	test1_test[,names] <- lapply(test1_test[,names], factor)
+
+	# Score test data. #
+       	nb_smote_fit_predict <- predict(nb_smote_fit, newdata=test1_test, type="prob")
+
+
+
+
+
+
+### Run stacking script + standard models to compare predictive performance. NOTE: When rerunning script, reload dataset and createFolds (above code) to avoid error message. ###
+### First stage models ###
+# NOTE: Need to tailor model metrics for each model, using Accuracy, AUC (ROC), or Brier score. #
+caret_function <- (function(a,b) 
+     {
+       	
+	trainx <- as.data.frame(a)
+	trainx_trigger <- trainx[which(trainx$trigger==1),]
+       	testx <- as.data.frame(b)
+       	testy <- b$IP_ADMITS_FOLLOWING_GT0
+       	fold <- b$folds2
+       	membno <- factor(b$MEMBNO)
+	trigger <- b$trigger
+       	#n <- b$n
+      
+       	
+	### Risk Weight Score developed by Marty Waters ###
+	riskwt_fit_predict <- b$risk_weight_score
+
+
+
+	### Trigger Score x Risk Weight Score developed by Marty Waters ###
+	trigriskwt_fit_predict <- riskwt_fit_predict*trigger
+
+
+
+	### Naive Bayes classifier on full training data. ###   
+       	#set.seed(234)
+       	nb_fit <- 
+		train(as.factor(ip_admit_following) ~ GENDER + MEMAGE + GT_27_DAYS_IP + ALWAMT + GT_4_WEEKS_OP + GT_1_DETOX_FU + ICM_ENG_REF + parent_ehmr + parent_ghm 
+			+ log_OP_VISITS + IP_ADMITS_one + IP_ADMITS_two + IP_ADMITS_three_plus + IOP_PHP_VISITS_gt0 + DISTINCT_DX_one + DISTINCT_DX_two
+			+ DISTINCT_DX_three_plus + log_ADJUSTMENT + log_ANXIETY + log_BIPOLAR + log_DELIRIUM + log_MAJDEPRESS + log_MENTAL_MED + log_MOOD + log_SCHIZOAFF 
+			+ log_SCHIZO + log_SUBSTANCE,
+		#train(as.factor(ip_admit) ~ . - IP_ADMITS_FOLLOWING_GT0 - MEMBNO - IP_ADMITS - IP_ADMITS_FOLLOWING  - ALWAMT_FOLLOWING - trigger - risk_weight_score - log_ALWAMT - log_ALWAMT_FOLLOWING - folds2, 
+               	#train(as.factor(ip_admit) ~ GENDER + MEMAGE + GT_27_DAYS_IP + ALWAMT + GT_4_WEEKS_OP + GT_1_DETOX_FU + ICM_ENG_REF, 
+		data=trainx,
+               	trControl=trainControl(summaryFunction=twoClassSummary, classProbs = TRUE, savePredictions = TRUE), 
+               	method="nb", 
+               	metric="ROC", 
+               	preProcess=c("center","scale"))
+	       	#allowParallel=TRUE)
+       	nb_fit_predict <- predict(nb_fit, newdata=testx, type="prob")
+
+
+
+	### Naive Bayes classifier on training records where trigger = 1. ###
+       	nb_trigger_fit <- 
+		train(as.factor(ip_admit_following) ~ GENDER + MEMAGE + GT_27_DAYS_IP + ALWAMT + GT_4_WEEKS_OP + GT_1_DETOX_FU + ICM_ENG_REF + parent_ehmr + parent_ghm 
+			+ log_OP_VISITS + IP_ADMITS_one + IP_ADMITS_two + IP_ADMITS_three_plus + IOP_PHP_VISITS_gt0 + DISTINCT_DX_one + DISTINCT_DX_two
+			+ DISTINCT_DX_three_plus + log_ADJUSTMENT + log_ANXIETY + log_BIPOLAR + log_DELIRIUM + log_MAJDEPRESS + log_MENTAL_MED + log_MOOD + log_SCHIZOAFF 
+			+ log_SCHIZO + log_SUBSTANCE,
+		data=trainx_trigger,
+               	trControl=trainControl(summaryFunction=twoClassSummary, classProbs = TRUE, savePredictions = TRUE), 
+               	method="nb", 
+               	metric="ROC", 
+               	preProcess=c("center","scale"))
+	       	#allowParallel=TRUE)
+       	nb_trigger_fit_predict <- predict(nb_trigger_fit, newdata=testx, type="prob")
+
+
+	### Naive Bayes on full training data with SMOTE over- and under-sampling. ### 
+	# Create recategorized variables and factorize in order to use SMOTE function on training data. #
+	trainx$parent_catg[trainx$parent_ehmr==1] <- 1
+	trainx$parent_catg[trainx$parent_ghm==1] <- 2
+	trainx$parent_catg[trainx$parent_ehmr==0 & trainx$parent_ghm==0] <- 3
+	trainx$ip_admits_catg[trainx$IP_ADMITS_one==1] <- 1
+	trainx$ip_admits_catg[trainx$IP_ADMITS_two==1] <- 2
+	trainx$ip_admits_catg[trainx$IP_ADMITS_three_plus==1] <- 3
+	trainx$ip_admits_catg[trainx$IP_ADMITS_one==0 & trainx$IP_ADMITS_two==0 & trainx$IP_ADMITS_three_plus==0] <- 0
+	trainx$distinct_dx_catg[trainx$DISTINCT_DX_one==1] <- 1
+	trainx$distinct_dx_catg[trainx$DISTINCT_DX_two==1] <- 2
+	trainx$distinct_dx_catg[trainx$DISTINCT_DX_three_plus==1] <- 3
+	trainx$distinct_dx_catg[trainx$DISTINCT_DX_one==0 & trainx$DISTINCT_DX_two==0 & trainx$DISTINCT_DX_three_plus==0] <- 0
+	names <- c(2,5,9:11,22,36,51:53)
+	trainx[,names] <- lapply(trainx[,names], factor)
+	trainx_smote <- trainx[c(1,2,3,5,6,9:11,18,22,26:36,51:53)]
+	
+	# Run SMOTE function on subset to oversample & undersample. #
+	trainx_smote_100 <- SMOTE(IP_ADMITS_FOLLOWING_GT0 ~ . - MEMBNO, trainx_smote, perc.over = 100, perc.under=100)
+	trainx_smote_200 <- SMOTE(IP_ADMITS_FOLLOWING_GT0 ~ . - MEMBNO, trainx_smote, perc.over = 200, perc.under=200)
+	trainx_smote_300 <- SMOTE(IP_ADMITS_FOLLOWING_GT0 ~ . - MEMBNO, trainx_smote, perc.over = 300, perc.under=300)
+	trainx_smote_400 <- SMOTE(IP_ADMITS_FOLLOWING_GT0 ~ . - MEMBNO, trainx_smote, perc.over = 400, perc.under=400)
+
+	# Recreate binary categorical variables back into SMOTE'd training data in order to run caret Naive Bayes classifier. #
+	trainx_smote_100$parent_ehmr <- 0; trainx_smote_100$parent_ghm <- 0; 
+	trainx_smote_100$IP_ADMITS_one <- 0; trainx_smote_100$IP_ADMITS_two <- 0; trainx_smote_100$IP_ADMITS_three_plus <- 0;
+	trainx_smote_100$DISTINCT_DX_one <- 0; trainx_smote_100$DISTINCT_DX_two <- 0; trainx_smote_100$DISTINCT_DX_three_plus <- 0;
+	trainx_smote_100$parent_ehmr[trainx_smote_100$parent_catg==1] <- 1
+	trainx_smote_100$parent_ghm[trainx_smote_100$parent_catg==2] <- 1
+	trainx_smote_100$IP_ADMITS_one[trainx_smote_100$ip_admits_catg==1] <- 1
+	trainx_smote_100$IP_ADMITS_two[trainx_smote_100$ip_admits_catg==2] <- 1
+	trainx_smote_100$IP_ADMITS_three_plus[trainx_smote_100$ip_admits_catg==3] <- 1
+	trainx_smote_100$DISTINCT_DX_one[trainx_smote_100$distinct_dx_catg==1] <- 1
+	trainx_smote_100$DISTINCT_DX_two[trainx_smote_100$distinct_dx_catg==2] <- 1
+	trainx_smote_100$DISTINCT_DX_three_plus[trainx_smote_100$distinct_dx_catg==3] <- 1
+	trainx_smote_100$distinct_dx_catg <- trainx_smote_100$ip_admits_catg <- trainx_smote_100$parent_catg <- NULL
+
+	trainx_smote_200$parent_ehmr <- 0; trainx_smote_200$parent_ghm <- 0; 
+	trainx_smote_200$IP_ADMITS_one <- 0; trainx_smote_200$IP_ADMITS_two <- 0; trainx_smote_200$IP_ADMITS_three_plus <- 0;
+	trainx_smote_200$DISTINCT_DX_one <- 0; trainx_smote_200$DISTINCT_DX_two <- 0; trainx_smote_200$DISTINCT_DX_three_plus <- 0;
+	trainx_smote_200$parent_ehmr[trainx_smote_200$parent_catg==1] <- 1
+	trainx_smote_200$parent_ghm[trainx_smote_200$parent_catg==2] <- 1
+	trainx_smote_200$IP_ADMITS_one[trainx_smote_200$ip_admits_catg==1] <- 1
+	trainx_smote_200$IP_ADMITS_two[trainx_smote_200$ip_admits_catg==2] <- 1
+	trainx_smote_200$IP_ADMITS_three_plus[trainx_smote_200$ip_admits_catg==3] <- 1
+	trainx_smote_200$DISTINCT_DX_one[trainx_smote_200$distinct_dx_catg==1] <- 1
+	trainx_smote_200$DISTINCT_DX_two[trainx_smote_200$distinct_dx_catg==2] <- 1
+	trainx_smote_200$DISTINCT_DX_three_plus[trainx_smote_200$distinct_dx_catg==3] <- 1
+	trainx_smote_200$distinct_dx_catg <- trainx_smote_200$ip_admits_catg <- trainx_smote_200$parent_catg <- NULL
+
+	trainx_smote_300$parent_ehmr <- 0; trainx_smote_300$parent_ghm <- 0; 
+	trainx_smote_300$IP_ADMITS_one <- 0; trainx_smote_300$IP_ADMITS_two <- 0; trainx_smote_300$IP_ADMITS_three_plus <- 0;
+	trainx_smote_300$DISTINCT_DX_one <- 0; trainx_smote_300$DISTINCT_DX_two <- 0; trainx_smote_300$DISTINCT_DX_three_plus <- 0;
+	trainx_smote_300$parent_ehmr[trainx_smote_300$parent_catg==1] <- 1
+	trainx_smote_300$parent_ghm[trainx_smote_300$parent_catg==2] <- 1
+	trainx_smote_300$IP_ADMITS_one[trainx_smote_300$ip_admits_catg==1] <- 1
+	trainx_smote_300$IP_ADMITS_two[trainx_smote_300$ip_admits_catg==2] <- 1
+	trainx_smote_300$IP_ADMITS_three_plus[trainx_smote_300$ip_admits_catg==3] <- 1
+	trainx_smote_300$DISTINCT_DX_one[trainx_smote_300$distinct_dx_catg==1] <- 1
+	trainx_smote_300$DISTINCT_DX_two[trainx_smote_300$distinct_dx_catg==2] <- 1
+	trainx_smote_300$DISTINCT_DX_three_plus[trainx_smote_300$distinct_dx_catg==3] <- 1
+	trainx_smote_300$distinct_dx_catg <- trainx_smote_300$ip_admits_catg <- trainx_smote_300$parent_catg <- NULL
+
+	trainx_smote_400$parent_ehmr <- 0; trainx_smote_400$parent_ghm <- 0; 
+	trainx_smote_400$IP_ADMITS_one <- 0; trainx_smote_400$IP_ADMITS_two <- 0; trainx_smote_400$IP_ADMITS_three_plus <- 0;
+	trainx_smote_400$DISTINCT_DX_one <- 0; trainx_smote_400$DISTINCT_DX_two <- 0; trainx_smote_400$DISTINCT_DX_three_plus <- 0;
+	trainx_smote_400$parent_ehmr[trainx_smote_400$parent_catg==1] <- 1
+	trainx_smote_400$parent_ghm[trainx_smote_400$parent_catg==2] <- 1
+	trainx_smote_400$IP_ADMITS_one[trainx_smote_400$ip_admits_catg==1] <- 1
+	trainx_smote_400$IP_ADMITS_two[trainx_smote_400$ip_admits_catg==2] <- 1
+	trainx_smote_400$IP_ADMITS_three_plus[trainx_smote_400$ip_admits_catg==3] <- 1
+	trainx_smote_400$DISTINCT_DX_one[trainx_smote_400$distinct_dx_catg==1] <- 1
+	trainx_smote_400$DISTINCT_DX_two[trainx_smote_400$distinct_dx_catg==2] <- 1
+	trainx_smote_400$DISTINCT_DX_three_plus[trainx_smote_400$distinct_dx_catg==3] <- 1
+	trainx_smote_400$distinct_dx_catg <- trainx_smote_400$ip_admits_catg <- trainx_smote_400$parent_catg <- NULL
+
+	#names <- c(1:ncol(trainx_smote))
+	#trainx_smote[,names] <- lapply(trainx_smote[,names], as.numeric)
+
+	# Create binomial ip_admit character outcome to use in caret. #
+	trainx_smote_100$ip_admit_following[trainx_smote_100$IP_ADMITS_FOLLOWING_GT0==0] <- "no"
+	trainx_smote_100$ip_admit_following[trainx_smote_100$IP_ADMITS_FOLLOWING_GT0==1] <- "yes" 
+
+	trainx_smote_200$ip_admit_following[trainx_smote_200$IP_ADMITS_FOLLOWING_GT0==0] <- "no"
+	trainx_smote_200$ip_admit_following[trainx_smote_200$IP_ADMITS_FOLLOWING_GT0==1] <- "yes" 
+
+	trainx_smote_300$ip_admit_following[trainx_smote_300$IP_ADMITS_FOLLOWING_GT0==0] <- "no"
+	trainx_smote_300$ip_admit_following[trainx_smote_300$IP_ADMITS_FOLLOWING_GT0==1] <- "yes" 
+
+	trainx_smote_400$ip_admit_following[trainx_smote_400$IP_ADMITS_FOLLOWING_GT0==0] <- "no"
+	trainx_smote_400$ip_admit_following[trainx_smote_400$IP_ADMITS_FOLLOWING_GT0==1] <- "yes" 
+
+	# Naive Bayes classifier on SMOTE'd data. #
+	nb_smote_fit_100 <- 
+		train(as.factor(ip_admit_following) ~ . - IP_ADMITS_FOLLOWING_GT0 - MEMBNO,
+		data=trainx_smote_100,
+               	trControl=trainControl(summaryFunction=twoClassSummary, classProbs = TRUE, savePredictions = TRUE), 
+               	method="nb", 
+               	metric="ROC", 
+               	preProcess=c("center","scale"))
+	       	#allowParallel=TRUE)
+
+	nb_smote_fit_200 <- 
+		train(as.factor(ip_admit_following) ~ . - IP_ADMITS_FOLLOWING_GT0 - MEMBNO,
+		data=trainx_smote_200,
+               	trControl=trainControl(summaryFunction=twoClassSummary, classProbs = TRUE, savePredictions = TRUE), 
+               	method="nb", 
+               	metric="ROC", 
+               	preProcess=c("center","scale"))
+	       	#allowParallel=TRUE)
+
+	nb_smote_fit_300 <- 
+		train(as.factor(ip_admit_following) ~ . - IP_ADMITS_FOLLOWING_GT0 - MEMBNO,
+		data=trainx_smote_300,
+               	trControl=trainControl(summaryFunction=twoClassSummary, classProbs = TRUE, savePredictions = TRUE), 
+               	method="nb", 
+               	metric="ROC", 
+               	preProcess=c("center","scale"))
+	       	#allowParallel=TRUE)
+
+	nb_smote_fit_400 <- 
+		train(as.factor(ip_admit_following) ~ . - IP_ADMITS_FOLLOWING_GT0 - MEMBNO,
+		data=trainx_smote_400,
+               	trControl=trainControl(summaryFunction=twoClassSummary, classProbs = TRUE, savePredictions = TRUE), 
+               	method="nb", 
+               	metric="ROC", 
+               	preProcess=c("center","scale"))
+	       	#allowParallel=TRUE)
+
+	# Convert select variables back to factors in order to score test dataset. #
+	#names <- c(2,5,9:11,22,36)
+	#testx[,names] <- lapply(testx[,names], factor)
+
+	# Score test data. #
+       	nb_smote_fit_predict_100 <- predict(nb_smote_fit_100, newdata=testx, type="prob")
+	nb_smote_fit_predict_200 <- predict(nb_smote_fit_200, newdata=testx, type="prob")
+	nb_smote_fit_predict_300 <- predict(nb_smote_fit_300, newdata=testx, type="prob")
+	nb_smote_fit_predict_400 <- predict(nb_smote_fit_400, newdata=testx, type="prob")
+
+
+	### Naive Bayes on training records where trigger = 1 with SMOTE over- and under-sampling. ### 
+	# Create recategorized variables and factorize in order to use SMOTE function on training data. #
+	trainx_trigger$parent_catg[trainx_trigger$parent_ehmr==1] <- 1
+	trainx_trigger$parent_catg[trainx_trigger$parent_ghm==1] <- 2
+	trainx_trigger$parent_catg[trainx_trigger$parent_ehmr==0 & trainx_trigger$parent_ghm==0] <- 3
+	trainx_trigger$ip_admits_catg[trainx_trigger$IP_ADMITS_one==1] <- 1
+	trainx_trigger$ip_admits_catg[trainx_trigger$IP_ADMITS_two==1] <- 2
+	trainx_trigger$ip_admits_catg[trainx_trigger$IP_ADMITS_three_plus==1] <- 3
+	trainx_trigger$ip_admits_catg[trainx_trigger$IP_ADMITS_one==0 & trainx_trigger$IP_ADMITS_two==0 & trainx_trigger$IP_ADMITS_three_plus==0] <- 0
+	trainx_trigger$distinct_dx_catg[trainx_trigger$DISTINCT_DX_one==1] <- 1
+	trainx_trigger$distinct_dx_catg[trainx_trigger$DISTINCT_DX_two==1] <- 2
+	trainx_trigger$distinct_dx_catg[trainx_trigger$DISTINCT_DX_three_plus==1] <- 3
+	trainx_trigger$distinct_dx_catg[trainx_trigger$DISTINCT_DX_one==0 & trainx_trigger$DISTINCT_DX_two==0 & trainx_trigger$DISTINCT_DX_three_plus==0] <- 0
+	names <- c(2,5,9:11,22,36,51:53)
+	trainx_trigger[,names] <- lapply(trainx_trigger[,names], factor)
+	trainx_trigger_smote <- trainx_trigger[c(1,2,3,5,6,9:11,18,22,26:36,51:53)]
+	
+	# Run SMOTE function on subset to oversample & undersample. #
+	trainx_trigger_smote_100 <- SMOTE(IP_ADMITS_FOLLOWING_GT0 ~ . - MEMBNO, trainx_trigger_smote, perc.over = 100, perc.under=100)
+	trainx_trigger_smote_200 <- SMOTE(IP_ADMITS_FOLLOWING_GT0 ~ . - MEMBNO, trainx_trigger_smote, perc.over = 200, perc.under=200)
+	trainx_trigger_smote_300 <- SMOTE(IP_ADMITS_FOLLOWING_GT0 ~ . - MEMBNO, trainx_trigger_smote, perc.over = 300, perc.under=300)
+	trainx_trigger_smote_400 <- SMOTE(IP_ADMITS_FOLLOWING_GT0 ~ . - MEMBNO, trainx_trigger_smote, perc.over = 400, perc.under=400)
+
+	# Recreate binary categorical variables back into SMOTE'd training data in order to run caret Naive Bayes classifier. #
+	trainx_trigger_smote_100$parent_ehmr <- 0; trainx_trigger_smote_100$parent_ghm <- 0; 
+	trainx_trigger_smote_100$IP_ADMITS_one <- 0; trainx_trigger_smote_100$IP_ADMITS_two <- 0; trainx_trigger_smote_100$IP_ADMITS_three_plus <- 0;
+	trainx_trigger_smote_100$DISTINCT_DX_one <- 0; trainx_trigger_smote_100$DISTINCT_DX_two <- 0; trainx_trigger_smote_100$DISTINCT_DX_three_plus <- 0;
+	trainx_trigger_smote_100$parent_ehmr[trainx_trigger_smote_100$parent_catg==1] <- 1
+	trainx_trigger_smote_100$parent_ghm[trainx_trigger_smote_100$parent_catg==2] <- 1
+	trainx_trigger_smote_100$IP_ADMITS_one[trainx_trigger_smote_100$ip_admits_catg==1] <- 1
+	trainx_trigger_smote_100$IP_ADMITS_two[trainx_trigger_smote_100$ip_admits_catg==2] <- 1
+	trainx_trigger_smote_100$IP_ADMITS_three_plus[trainx_trigger_smote_100$ip_admits_catg==3] <- 1
+	trainx_trigger_smote_100$DISTINCT_DX_one[trainx_trigger_smote_100$distinct_dx_catg==1] <- 1
+	trainx_trigger_smote_100$DISTINCT_DX_two[trainx_trigger_smote_100$distinct_dx_catg==2] <- 1
+	trainx_trigger_smote_100$DISTINCT_DX_three_plus[trainx_trigger_smote_100$distinct_dx_catg==3] <- 1
+	trainx_trigger_smote_100$distinct_dx_catg <- trainx_trigger_smote_100$ip_admits_catg <- trainx_trigger_smote_100$parent_catg <- NULL
+
+	trainx_trigger_smote_200$parent_ehmr <- 0; trainx_trigger_smote_200$parent_ghm <- 0; 
+	trainx_trigger_smote_200$IP_ADMITS_one <- 0; trainx_trigger_smote_200$IP_ADMITS_two <- 0; trainx_trigger_smote_200$IP_ADMITS_three_plus <- 0;
+	trainx_trigger_smote_200$DISTINCT_DX_one <- 0; trainx_trigger_smote_200$DISTINCT_DX_two <- 0; trainx_trigger_smote_200$DISTINCT_DX_three_plus <- 0;
+	trainx_trigger_smote_200$parent_ehmr[trainx_trigger_smote_200$parent_catg==1] <- 1
+	trainx_trigger_smote_200$parent_ghm[trainx_trigger_smote_200$parent_catg==2] <- 1
+	trainx_trigger_smote_200$IP_ADMITS_one[trainx_trigger_smote_200$ip_admits_catg==1] <- 1
+	trainx_trigger_smote_200$IP_ADMITS_two[trainx_trigger_smote_200$ip_admits_catg==2] <- 1
+	trainx_trigger_smote_200$IP_ADMITS_three_plus[trainx_trigger_smote_200$ip_admits_catg==3] <- 1
+	trainx_trigger_smote_200$DISTINCT_DX_one[trainx_trigger_smote_200$distinct_dx_catg==1] <- 1
+	trainx_trigger_smote_200$DISTINCT_DX_two[trainx_trigger_smote_200$distinct_dx_catg==2] <- 1
+	trainx_trigger_smote_200$DISTINCT_DX_three_plus[trainx_trigger_smote_200$distinct_dx_catg==3] <- 1
+	trainx_trigger_smote_200$distinct_dx_catg <- trainx_trigger_smote_200$ip_admits_catg <- trainx_trigger_smote_200$parent_catg <- NULL
+
+	trainx_trigger_smote_300$parent_ehmr <- 0; trainx_trigger_smote_300$parent_ghm <- 0; 
+	trainx_trigger_smote_300$IP_ADMITS_one <- 0; trainx_trigger_smote_300$IP_ADMITS_two <- 0; trainx_trigger_smote_300$IP_ADMITS_three_plus <- 0;
+	trainx_trigger_smote_300$DISTINCT_DX_one <- 0; trainx_trigger_smote_300$DISTINCT_DX_two <- 0; trainx_trigger_smote_300$DISTINCT_DX_three_plus <- 0;
+	trainx_trigger_smote_300$parent_ehmr[trainx_trigger_smote_300$parent_catg==1] <- 1
+	trainx_trigger_smote_300$parent_ghm[trainx_trigger_smote_300$parent_catg==2] <- 1
+	trainx_trigger_smote_300$IP_ADMITS_one[trainx_trigger_smote_300$ip_admits_catg==1] <- 1
+	trainx_trigger_smote_300$IP_ADMITS_two[trainx_trigger_smote_300$ip_admits_catg==2] <- 1
+	trainx_trigger_smote_300$IP_ADMITS_three_plus[trainx_trigger_smote_300$ip_admits_catg==3] <- 1
+	trainx_trigger_smote_300$DISTINCT_DX_one[trainx_trigger_smote_300$distinct_dx_catg==1] <- 1
+	trainx_trigger_smote_300$DISTINCT_DX_two[trainx_trigger_smote_300$distinct_dx_catg==2] <- 1
+	trainx_trigger_smote_300$DISTINCT_DX_three_plus[trainx_trigger_smote_300$distinct_dx_catg==3] <- 1
+	trainx_trigger_smote_300$distinct_dx_catg <- trainx_trigger_smote_300$ip_admits_catg <- trainx_trigger_smote_300$parent_catg <- NULL
+
+	trainx_trigger_smote_400$parent_ehmr <- 0; trainx_trigger_smote_400$parent_ghm <- 0; 
+	trainx_trigger_smote_400$IP_ADMITS_one <- 0; trainx_trigger_smote_400$IP_ADMITS_two <- 0; trainx_trigger_smote_400$IP_ADMITS_three_plus <- 0;
+	trainx_trigger_smote_400$DISTINCT_DX_one <- 0; trainx_trigger_smote_400$DISTINCT_DX_two <- 0; trainx_trigger_smote_400$DISTINCT_DX_three_plus <- 0;
+	trainx_trigger_smote_400$parent_ehmr[trainx_trigger_smote_400$parent_catg==1] <- 1
+	trainx_trigger_smote_400$parent_ghm[trainx_trigger_smote_400$parent_catg==2] <- 1
+	trainx_trigger_smote_400$IP_ADMITS_one[trainx_trigger_smote_400$ip_admits_catg==1] <- 1
+	trainx_trigger_smote_400$IP_ADMITS_two[trainx_trigger_smote_400$ip_admits_catg==2] <- 1
+	trainx_trigger_smote_400$IP_ADMITS_three_plus[trainx_trigger_smote_400$ip_admits_catg==3] <- 1
+	trainx_trigger_smote_400$DISTINCT_DX_one[trainx_trigger_smote_400$distinct_dx_catg==1] <- 1
+	trainx_trigger_smote_400$DISTINCT_DX_two[trainx_trigger_smote_400$distinct_dx_catg==2] <- 1
+	trainx_trigger_smote_400$DISTINCT_DX_three_plus[trainx_trigger_smote_400$distinct_dx_catg==3] <- 1
+	trainx_trigger_smote_400$distinct_dx_catg <- trainx_trigger_smote_400$ip_admits_catg <- trainx_trigger_smote_400$parent_catg <- NULL
+
+
+	#names <- c(1:ncol(trainx_trigger_smote))
+	#trainx_trigger_smote[,names] <- lapply(trainx_trigger_smote[,names], as.numeric)
+
+	# Create binomial ip_admit character outcome to use in caret. #
+	trainx_trigger_smote_100$ip_admit_following[trainx_trigger_smote_100$IP_ADMITS_FOLLOWING_GT0==0] <- "no"
+	trainx_trigger_smote_100$ip_admit_following[trainx_trigger_smote_100$IP_ADMITS_FOLLOWING_GT0==1] <- "yes" 
+
+	trainx_trigger_smote_200$ip_admit_following[trainx_trigger_smote_200$IP_ADMITS_FOLLOWING_GT0==0] <- "no"
+	trainx_trigger_smote_200$ip_admit_following[trainx_trigger_smote_200$IP_ADMITS_FOLLOWING_GT0==1] <- "yes" 
+
+	trainx_trigger_smote_300$ip_admit_following[trainx_trigger_smote_300$IP_ADMITS_FOLLOWING_GT0==0] <- "no"
+	trainx_trigger_smote_300$ip_admit_following[trainx_trigger_smote_300$IP_ADMITS_FOLLOWING_GT0==1] <- "yes" 
+
+	trainx_trigger_smote_400$ip_admit_following[trainx_trigger_smote_400$IP_ADMITS_FOLLOWING_GT0==0] <- "no"
+	trainx_trigger_smote_400$ip_admit_following[trainx_trigger_smote_400$IP_ADMITS_FOLLOWING_GT0==1] <- "yes" 
+
+	# Naive Bayes classifier on SMOTE'd data. #
+	nb_trigger_smote_fit_100 <- 
+		train(as.factor(ip_admit_following) ~ . - IP_ADMITS_FOLLOWING_GT0 - MEMBNO,
+		data=trainx_trigger_smote_100,
+               	trControl=trainControl(summaryFunction=twoClassSummary, classProbs = TRUE, savePredictions = TRUE), 
+               	method="nb", 
+               	metric="ROC", 
+               	preProcess=c("center","scale"))
+	       	#allowParallel=TRUE)
+
+	nb_trigger_smote_fit_200 <- 
+		train(as.factor(ip_admit_following) ~ . - IP_ADMITS_FOLLOWING_GT0 - MEMBNO,
+		data=trainx_trigger_smote_200,
+               	trControl=trainControl(summaryFunction=twoClassSummary, classProbs = TRUE, savePredictions = TRUE), 
+               	method="nb", 
+               	metric="ROC", 
+               	preProcess=c("center","scale"))
+	       	#allowParallel=TRUE)
+
+	nb_trigger_smote_fit_300 <- 
+		train(as.factor(ip_admit_following) ~ . - IP_ADMITS_FOLLOWING_GT0 - MEMBNO,
+		data=trainx_trigger_smote_300,
+               	trControl=trainControl(summaryFunction=twoClassSummary, classProbs = TRUE, savePredictions = TRUE), 
+               	method="nb", 
+               	metric="ROC", 
+               	preProcess=c("center","scale"))
+	       	#allowParallel=TRUE)
+
+	nb_trigger_smote_fit_400 <- 
+		train(as.factor(ip_admit_following) ~ . - IP_ADMITS_FOLLOWING_GT0 - MEMBNO,
+		data=trainx_trigger_smote_400,
+               	trControl=trainControl(summaryFunction=twoClassSummary, classProbs = TRUE, savePredictions = TRUE), 
+               	method="nb", 
+               	metric="ROC", 
+               	preProcess=c("center","scale"))
+	       	#allowParallel=TRUE)
+
+	# Convert select variables back to factors in order to score test dataset. #
+	#names <- c(2,5,9:11,22,36)
+	#testx[,names] <- lapply(testx[,names], factor)
+
+	# Score test data. #
+       	nb_trigger_smote_fit_predict_100 <- predict(nb_trigger_smote_fit_100, newdata=testx, type="prob")
+	nb_trigger_smote_fit_predict_200 <- predict(nb_trigger_smote_fit_200, newdata=testx, type="prob")
+	nb_trigger_smote_fit_predict_300 <- predict(nb_trigger_smote_fit_300, newdata=testx, type="prob")
+	nb_trigger_smote_fit_predict_400 <- predict(nb_trigger_smote_fit_400, newdata=testx, type="prob")
+
+
+       	all_test_predict <- cbind.data.frame(membno, testy, fold, riskwt_fit_predict, trigriskwt_fit_predict, 
+		nb_fit_predict=nb_fit_predict$yes, nb_trigger_fit_predict=nb_trigger_fit_predict$yes, 
+		nb_smote_fit_predict_100=nb_smote_fit_predict_100$yes, nb_smote_fit_predict_200=nb_smote_fit_predict_200$yes, 
+		nb_smote_fit_predict_300=nb_smote_fit_predict_300$yes, nb_smote_fit_predict_400=nb_smote_fit_predict_400$yes,
+		nb_trigger_smote_fit_predict_100=nb_trigger_smote_fit_predict_100$yes, nb_trigger_smote_fit_predict_200=nb_trigger_smote_fit_predict_200$yes,
+		nb_trigger_smote_fit_predict_300=nb_trigger_smote_fit_predict_300$yes, nb_trigger_smote_fit_predict_400=nb_trigger_smote_fit_predict_400$yes)
+ 
+       	list_train <<- list(all_test_predict)
+
+     })
+
+caret_fit <- mapply(caret_function,train,test)
+
+caret_fit_rbind <- do.call("rbind", caret_fit)
+
+> summary(caret_fit_rbind)
+         membno          testy              fold   riskwt_fit_predict trigriskwt_fit_predict nb_fit_predict      nb_trigger_fit_predict nb_smote_fit_predict
+ 00115467401:    1   Min.   :0.00000   Min.   :1   Min.   : 0.0000    Min.   : 0.0000        Min.   :0.0000000   Min.   :0.000000       Min.   :0.0000000   
+ 00337182901:    1   1st Qu.:0.00000   1st Qu.:2   1st Qu.: 0.0000    1st Qu.: 0.0000        1st Qu.:0.0000000   1st Qu.:0.000000       1st Qu.:0.0000000   
+ 00337458701:    1   Median :0.00000   Median :3   Median : 0.0000    Median : 0.0000        Median :0.0000001   Median :0.000000       Median :0.0000001   
+ 00337666901:    1   Mean   :0.03834   Mean   :3   Mean   : 0.4262    Mean   : 0.3528        Mean   :0.0796684   Mean   :0.001457       Mean   :0.0296646   
+ 00415135101:    1   3rd Qu.:0.00000   3rd Qu.:4   3rd Qu.: 0.0000    3rd Qu.: 0.0000        3rd Qu.:0.0000005   3rd Qu.:0.000000       3rd Qu.:0.0000011   
+ 00419287501:    1   Max.   :1.00000   Max.   :5   Max.   :30.4333    Max.   :30.4333        Max.   :1.0000000   Max.   :0.999999       Max.   :1.0000000   
+ (Other)    :12592                                                                                                                                          
+ nb_trigger_smote_fit_predict
+ Min.   :0.0000000           
+ 1st Qu.:0.0000621           
+ Median :0.0006991           
+ Mean   :0.0508709           
+ 3rd Qu.:0.0070299           
+ Max.   :1.0000000    
+
+
+nb_fit_1 <- caret_fit_rbind[which(caret_fit_rbind$fold==1),]
+nb_fit_2 <- caret_fit_rbind[which(caret_fit_rbind$fold==2),]
+nb_fit_3 <- caret_fit_rbind[which(caret_fit_rbind$fold==3),]
+nb_fit_4 <- caret_fit_rbind[which(caret_fit_rbind$fold==4),]
+nb_fit_5 <- caret_fit_rbind[which(caret_fit_rbind$fold==5),]
+
+nb_fit_list <- list(nb_fit_1, nb_fit_2, nb_fit_3, nb_fit_4, nb_fit_5)
+
+
+### Plot ROC curves. ###
+for (i in 1:5) 
+{
+
+predict_list <- list(c(nb_fit_list[[i]]$riskwt_fit_predict), c(nb_fit_list[[i]]$trigriskwt_fit_predict), c(nb_fit_list[[i]]$nb_fit_predict), 
+	c(nb_fit_list[[i]]$nb_trigger_fit_predict), c(nb_fit_list[[i]]$nb_smote_fit_predict), c(nb_fit_list[[i]]$nb_trigger_smote_fit_predict))
+actual_list <- list(c(nb_fit_list[[i]]$testy))
+actual_list <- rep(actual_list, 6)
+list_preds <- prediction(predict_list, actual_list)
+roc <- performance(list_preds, "tpr", "fpr")
+windows()
+roc_plot <- plot(roc, main=paste("Fold ",i," ROC curves by model with 2013-2014 NY Medicaid dataset"), col=as.list(1:6))
+legend(0.4, 0.4, c("risk weights","risk weights + trigger","Naive Bayes classifier","Naive Bayes classifier + trigger",
+	"Naive Bayes classifier with SMOTE perc.over = 200, perc.under=200", "Naive Bayes classifier + trigger with SMOTE perc.over = 200, perc.under=200"), 
+	border="black", cex=1, box.col="white", lty=c(1,1,1,1,1,1), lwd=c(2.5,2.5,2.5,2.5,2.5,2.5), col=c("black","red","green3","blue","cyan","magenta"))
+print(roc_plot)
+
+}
+
+predict_list <- list(c(caret_fit_rbind$riskwt_fit_predict), c(caret_fit_rbind$trigriskwt_fit_predict), c(caret_fit_rbind$nb_fit_predict), 
+	c(caret_fit_rbind$nb_trigger_fit_predict), c(caret_fit_rbind$nb_smote_fit_predict), c(caret_fit_rbind$nb_trigger_smote_fit_predict))
+actual_list <- list(c(caret_fit_rbind$testy))
+actual_list <- rep(actual_list, 6)
+list_preds <- prediction(predict_list, actual_list)
+roc <- performance(list_preds, "tpr", "fpr")
+windows()
+roc_plot <- plot(roc, main=paste("ROC curves by model with 2013-2014 NY Medicaid dataset"), col=as.list(1:6))
+legend(0.4, 0.4, c("risk weights","risk weights + trigger","Naive Bayes classifier","Naive Bayes classifier + trigger",
+	"Naive Bayes classifier with SMOTE perc.over = 200, perc.under=200", "Naive Bayes classifier + trigger with SMOTE perc.over = 200, perc.under=200"), 
+	border="black", cex=1, box.col="white", lty=c(1,1,1,1,1,1), lwd=c(2.5,2.5,2.5,2.5,2.5,2.5), col=c("black","red","green3","blue","cyan","magenta"))
+print(roc_plot)
+
+
+
+### Plot cumulative actual proportion admitted curves by sorted predicted probability by model. ###
+nums <- c(1:5)
+all_preds <- setNames(replicate(5,data.frame()), nums)
+
+for (i in 1:5) 
+{
+
+pred=nb_fit_list[[i]]$riskwt_fit_predict
+model=rep("Risk weights",nrow(nb_fit_list[[i]]))
+actual=nb_fit_list[[i]]$testy
+riskwt_preds=data.frame(actual,pred,model)
+riskwt_preds=riskwt_preds[order(-pred),]
+riskwt_preds$actual_avg_by_pred=cumsum(riskwt_preds$actual)/seq_along(riskwt_preds$actual)
+riskwt_preds$num=1:nrow(riskwt_preds)
+
+
+pred=nb_fit_list[[i]]$trigriskwt_fit_predict
+model=rep("Trigger + risk weights",nrow(nb_fit_list[[i]]))
+actual=nb_fit_list[[i]]$testy
+trigriskwt_preds=data.frame(actual,pred,model)
+trigriskwt_preds=trigriskwt_preds[order(-pred),]
+trigriskwt_preds$actual_avg_by_pred=cumsum(trigriskwt_preds$actual)/seq_along(trigriskwt_preds$actual)
+trigriskwt_preds$num=1:nrow(trigriskwt_preds)
+
+
+pred=nb_fit_list[[i]]$nb_fit_predict
+model=rep("Naive Bayes classifier",nrow(nb_fit_list[[i]]))
+actual=nb_fit_list[[i]]$testy
+naivebayes_preds=data.frame(actual,pred,model)
+naivebayes_preds=naivebayes_preds[order(-pred),]
+naivebayes_preds$actual_avg_by_pred=cumsum(naivebayes_preds$actual)/seq_along(naivebayes_preds$actual)
+naivebayes_preds$num=1:nrow(naivebayes_preds)
+
+
+pred=nb_fit_list[[i]]$nb_trigger_fit_predict
+model=rep("Trigger + Naive Bayes classifier",nrow(nb_fit_list[[i]]))
+actual=nb_fit_list[[i]]$testy
+trignaivebayes_preds=data.frame(actual,pred,model)
+trignaivebayes_preds=trignaivebayes_preds[order(-pred),]
+trignaivebayes_preds$actual_avg_by_pred=cumsum(trignaivebayes_preds$actual)/seq_along(trignaivebayes_preds$actual)
+trignaivebayes_preds$num=1:nrow(trignaivebayes_preds)
+
+
+pred=nb_fit_list[[i]]$nb_smote_fit_predict
+model=rep("Naive Bayes classifier with SMOTE",nrow(nb_fit_list[[i]]))
+actual=nb_fit_list[[i]]$testy
+naivebayes_smote_preds=data.frame(actual,pred,model)
+naivebayes_smote_preds=naivebayes_smote_preds[order(-pred),]
+naivebayes_smote_preds$actual_avg_by_pred=cumsum(naivebayes_smote_preds$actual)/seq_along(naivebayes_smote_preds$actual)
+naivebayes_smote_preds$num=1:nrow(naivebayes_smote_preds)
+
+
+pred=nb_fit_list[[i]]$nb_trigger_smote_fit_predict
+model=rep("Naive Bayes classifier + trigger with SMOTE",nrow(nb_fit_list[[i]]))
+actual=nb_fit_list[[i]]$testy
+trignaivebayes_smote_preds=data.frame(actual,pred,model)
+trignaivebayes_smote_preds=trignaivebayes_smote_preds[order(-pred),]
+trignaivebayes_smote_preds$actual_avg_by_pred=cumsum(trignaivebayes_smote_preds$actual)/seq_along(trignaivebayes_smote_preds$actual)
+trignaivebayes_smote_preds$num=1:nrow(trignaivebayes_smote_preds)
+
+
+
+all_preds[[i]]=rbind(riskwt_preds, trigriskwt_preds, naivebayes_preds, trignaivebayes_preds, naivebayes_smote_preds, trignaivebayes_smote_preds)
+
+windows()
+plot <- qplot(num, actual_avg_by_pred, data=all_preds[[i]], xlab="Top n members by score", ylab="Proportion admitted", 
+	main=paste("Fold ",i, "Plot of cumulative actual proportion admitted for New York Medicaid 2013-2014 test datasets"), color=model)
+plot <- plot + geom_line(size=1) + scale_x_continuous(trans = "reverse") + theme(text = element_text(size=16)) + xlim(200,1)
+print(plot)
+
+}
+
+
+
+pred=caret_fit_rbind$riskwt_fit_predict
+model=rep("Risk weights",nrow(caret_fit_rbind))
+actual=caret_fit_rbind$testy
+riskwt_preds=data.frame(actual,pred,model)
+riskwt_preds=riskwt_preds[order(-pred),]
+riskwt_preds$actual_avg_by_pred=cumsum(riskwt_preds$actual)/seq_along(riskwt_preds$actual)
+riskwt_preds$num=1:nrow(riskwt_preds)
+
+
+pred=caret_fit_rbind$trigriskwt_fit_predict
+model=rep("Trigger + risk weights",nrow(caret_fit_rbind))
+actual=caret_fit_rbind$testy
+trigriskwt_preds=data.frame(actual,pred,model)
+trigriskwt_preds=trigriskwt_preds[order(-pred),]
+trigriskwt_preds$actual_avg_by_pred=cumsum(trigriskwt_preds$actual)/seq_along(trigriskwt_preds$actual)
+trigriskwt_preds$num=1:nrow(trigriskwt_preds)
+
+
+pred=caret_fit_rbind$nb_fit_predict
+model=rep("Naive Bayes classifier",nrow(caret_fit_rbind))
+actual=caret_fit_rbind$testy
+naivebayes_preds=data.frame(actual,pred,model)
+naivebayes_preds=naivebayes_preds[order(-pred),]
+naivebayes_preds$actual_avg_by_pred=cumsum(naivebayes_preds$actual)/seq_along(naivebayes_preds$actual)
+naivebayes_preds$num=1:nrow(naivebayes_preds)
+
+
+pred=caret_fit_rbind$nb_trigger_fit_predict
+model=rep("Trigger + Naive Bayes classifier",nrow(caret_fit_rbind))
+actual=caret_fit_rbind$testy
+trignaivebayes_preds=data.frame(actual,pred,model)
+trignaivebayes_preds=trignaivebayes_preds[order(-pred),]
+trignaivebayes_preds$actual_avg_by_pred=cumsum(trignaivebayes_preds$actual)/seq_along(trignaivebayes_preds$actual)
+trignaivebayes_preds$num=1:nrow(trignaivebayes_preds)
+
+
+pred=caret_fit_rbind$nb_smote_fit_predict
+model=rep("Naive Bayes classifier with SMOTE",nrow(caret_fit_rbind))
+actual=caret_fit_rbind$testy
+naivebayes_smote_preds=data.frame(actual,pred,model)
+naivebayes_smote_preds=naivebayes_smote_preds[order(-pred),]
+naivebayes_smote_preds$actual_avg_by_pred=cumsum(naivebayes_smote_preds$actual)/seq_along(naivebayes_smote_preds$actual)
+naivebayes_smote_preds$num=1:nrow(naivebayes_smote_preds)
+
+
+pred=caret_fit_rbind$nb_trigger_smote_fit_predict
+model=rep("Naive Bayes classifier + trigger with SMOTE",nrow(caret_fit_rbind))
+actual=caret_fit_rbind$testy
+trignaivebayes_smote_preds=data.frame(actual,pred,model)
+trignaivebayes_smote_preds=trignaivebayes_smote_preds[order(-pred),]
+trignaivebayes_smote_preds$actual_avg_by_pred=cumsum(trignaivebayes_smote_preds$actual)/seq_along(trignaivebayes_smote_preds$actual)
+trignaivebayes_smote_preds$num=1:nrow(trignaivebayes_smote_preds)
+
+
+
+all_preds=rbind(riskwt_preds, trigriskwt_preds, naivebayes_preds, trignaivebayes_preds, naivebayes_smote_preds, trignaivebayes_smote_preds)
+
+windows()
+plot <- qplot(num, actual_avg_by_pred, data=all_preds, xlab="Top n members by score", ylab="Proportion admitted", 
+	main=paste("	Plot of cumulative actual proportion admitted for New York Medicaid 2013-2014 test datasets"), color=model)
+plot <- plot + geom_line(size=1) + scale_x_continuous(trans = "reverse") + theme(text = element_text(size=16)) + xlim(200,1)
+print(plot)
+
+
+
+
+
+
+
+
+       	### Elastic net ###   
+       	set.seed(123)
+       	glm_fit <- 
+		train(as.factor(ip_admit) ~ . - IP_ADMITS_FOLLOWING_GT0 - MEMBNO - IP_ADMITS - IP_ADMITS_FOLLOWING  - ALWAMT_FOLLOWING - trigger - risk_weight_score 
+			- log_ALWAMT - log_ALWAMT_FOLLOWING - folds2,  
+               	data=trainx,
+               	trControl=trainControl(method="cv", number=5, summaryFunction=twoClassSummary, classProbs = TRUE, savePredictions = TRUE), 
+               	method="glmnet", 
+               	family="binomial", 
+               	tuneGrid=expand.grid(alpha=c(0, .1, .2, .3, .4, .5, .6, .7, .8, .9, 1.0), lambda=c(.0001, .0002, .0005, .001, .002, .005, .01, .02, .05, .1, .2, .5, 1, 2, 5, 10, 20, 50)), 
+               	metric="ROC", 
+               	preProcess=c("center","scale"))
+	       	#allowParallel=TRUE)
+       	glm_fit_predict <- predict(glm_fit, newdata=testx, type="prob")
+
+
+       	### Support Vector Machine ###      
+       	set.seed(456)
+       	svm_fit <- 
+		train(as.factor(ip_admit) ~ . - IP_ADMITS_FOLLOWING_GT0 - MEMBNO - IP_ADMITS - IP_ADMITS_FOLLOWING  - ALWAMT_FOLLOWING - trigger - risk_weight_score 
+			- log_ALWAMT - log_ALWAMT_FOLLOWING - folds2,  
+               	data=trainx,
+               	trControl=trainControl(method="cv", number=5, summaryFunction=twoClassSummary, classProbs = TRUE, savePredictions = TRUE), 
+               	method="svmRadial", 
+	       	#method="svmPoly", 
+               	tuneGrid=expand.grid(C=c(.001, .005, .01, .05, .1, .5, 1, 10, 50, 100, 500, 1000), sigma=c(.0001, .0002, .0005, .001, .002, .005, .01, .02, .05, .1, .2, .5, 1, 2, 5, 10, 20, 50)), 
+               	metric="ROC", 
+               	preProcess=c("center","scale"))
+	       	#allowParallel=TRUE)
+	svm_fit_predict <- predict(svm_fit, newdata=testx, type="prob")
+
+
+       	### Gradient boosting machine ###
+       	set.seed(567)
+       	gbmGrid <-  expand.grid(interaction.depth=c(1,2), n.trees=10000, shrinkage=0.001, n.minobsinnode=c(5,10,20))
+       	gbm_fit <- 
+		train(as.factor(ip_admit) ~ GENDER + MEMAGE + GT_27_DAYS_IP + ALWAMT + GT_4_WEEKS_OP + GT_1_DETOX_FU + ICM_ENG_REF + parent_ehmr + parent_ghm 
+			+ log_OP_VISITS + IP_ADMITS_one + IP_ADMITS_two + IP_ADMITS_three_plus + IOP_PHP_VISITS_gt0 + DISTINCT_DX_one + DISTINCT_DX_two
+			+ DISTINCT_DX_three_plus + log_ADJUSTMENT + log_ANXIETY + log_BIPOLAR + log_DELIRIUM + log_MAJDEPRESS + log_MENTAL_MED + log_MOOD + log_SCHIZOAFF 
+			+ log_SCHIZO + log_SUBSTANCE, 
+	       	tuneGrid = gbmGrid,
+               	data=trainx,
+               	trControl=trainControl(method="cv", number=5, summaryFunction=twoClassSummary, classProbs = TRUE, savePredictions = TRUE), 
+               	method="gbm", 
+               	metric="ROC", 
+               	preProcess=c("center","scale"))
+	       	#allowParallel=TRUE)
+       	gbm_fit_predict <- predict(gbm_fit, newdata=testx, type="prob")
+
+
+
+       	### Random forest ###
+       	set.seed(678)
+       	rf_fit <- 
+		train(as.factor(ip_admit) ~ GENDER + MEMAGE + GT_27_DAYS_IP + ALWAMT + GT_4_WEEKS_OP + GT_1_DETOX_FU + ICM_ENG_REF + parent_ehmr + parent_ghm 
+			+ log_OP_VISITS + IP_ADMITS_one + IP_ADMITS_two + IP_ADMITS_three_plus + IOP_PHP_VISITS_gt0 + DISTINCT_DX_one + DISTINCT_DX_two
+			+ DISTINCT_DX_three_plus + log_ADJUSTMENT + log_ANXIETY + log_BIPOLAR + log_DELIRIUM + log_MAJDEPRESS + log_MENTAL_MED + log_MOOD + log_SCHIZOAFF 
+			+ log_SCHIZO + log_SUBSTANCE,  
+       	       	data=trainx,
+               	trControl=trainControl(method="cv", number=5, summaryFunction=twoClassSummary, classProbs = TRUE, savePredictions = TRUE), 
+               	method="rf", 
+               	ntree=100,
+	       	prox=TRUE,
+               	metric="ROC", 
+               	preProcess=c("center","scale"))
+	       	#allowParallel=TRUE)
+       	rf_fit_predict <- predict(rf_fit, newdata=testx, type="prob")
+
+
+
+       	### k nearest neighbor ###
+       	set.seed(789)
+       	knn_fit <- 
+		train(as.factor(ip_admit) ~ GENDER + MEMAGE + GT_27_DAYS_IP + ALWAMT + GT_4_WEEKS_OP + GT_1_DETOX_FU + ICM_ENG_REF + parent_ehmr + parent_ghm 
+			+ log_OP_VISITS + IP_ADMITS_one + IP_ADMITS_two + IP_ADMITS_three_plus + IOP_PHP_VISITS_gt0 + DISTINCT_DX_one + DISTINCT_DX_two
+			+ DISTINCT_DX_three_plus + log_ADJUSTMENT + log_ANXIETY + log_BIPOLAR + log_DELIRIUM + log_MAJDEPRESS + log_MENTAL_MED + log_MOOD + log_SCHIZOAFF 
+			+ log_SCHIZO + log_SUBSTANCE,   
+       	       	data=trainx,
+               	trControl=trainControl(method="cv", number=5, savePredictions = TRUE), 
+               	method="knn", 
+               	metric="Kappa", 
+               	preProcess=c("center","scale"))
+	       	#allowParallel=TRUE)
+       	knn_fit_predict <- predict(knn_fit, newdata=testx, type="prob")	
+
+
+       	all_test_predict <- cbind.data.frame(membno, testy, fold, glm_fit_predict=glm_fit_predict$yes, svm_fit_predict=svm_fit_predict$yes, nb_fit_predict=nb_fit_predict$yes, gbm_fit_predict=gbm_fit_predict$yes, rf_fit_predict=rf_fit_predict$yes, knn_fit_predict=knn_fit_predict$yes)
+ 
+       	list_train <<- list(all_test_predict)
+
+     })
+
+caret_fit <- mapply(caret_function,train,test)
+
+caret_fit_rbind <- do.call("rbind", caret_fit)
+
+
+
+
